@@ -1,0 +1,332 @@
+{
+  "name": "AI Odoo Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "testing/api/olg/1/chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -64
+      ],
+      "id": "0558f96f-501c-4923-b0a5-b532a8ef14f2",
+      "name": "Webhook",
+      "webhookId": "da674dc0-4dc8-4ed6-a51d-59afff4272e2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Webhook').item.json.body.params.prompt }}",
+        "options": {
+          "systemMessage": "Do not add extra words, just your answer.",
+          "returnIntermediateSteps": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        -64
+      ],
+      "id": "6621da40-7d97-4770-93b8-9c4eccac3a99",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "field": "success"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        1392,
+        -64
+      ],
+      "id": "45c8320c-e45c-4429-a420-497632091012",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// expects $json.messages = [{text, role|author, timestamp}, ...]$json.body.params.conversation_history\nlet list = $input.first().json.body.params.conversation_history;\n\nconst mapRole = (m) => {\n  const r = (m.role || m.author || '').toLowerCase();\n  if (r === 'system') return 'system';\n  if (r.includes('assistant') || r === 'bot' || r === 'ai') return 'ai';\n  return 'user';\n};\n\nreturn list.map(m => ({\n  json: {\n    role: mapRole(m),                 // \"User\" | \"AI\" | \"System\" (exact labels the node expects)\n    content: m.content,\n    sessionId: $input.first().json.body.id || 'unknown'\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        -64
+      ],
+      "id": "ff42c146-2f6e-423b-99de-2a19eff56a1c",
+      "name": "Split conversation",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "mode": "delete",
+        "deleteMode": "all"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        1776,
+        -64
+      ],
+      "id": "df6ec72a-2aff-4dc3-9f9e-70247ac8466d",
+      "name": "Delete conversation"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "={{ $json.role }}",
+              "message": "={{ $json.content }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        1136,
+        -64
+      ],
+      "id": "39ed60fd-080f-43d7-86f3-a7f9e0e4f75e",
+      "name": "Insert conversation"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.data = JSON.stringify({\"jsonrpc\": \"2.0\", \"id\": (Math.random() + 1).toString(36), \"result\": {\"status\": \"success\", \"content\": $('AI Agent').first().json.output}})\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        -64
+      ],
+      "id": "9d871ce3-d141-460a-aae5-61c5de353be5",
+      "name": "Parse Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.data }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2160,
+        -64
+      ],
+      "id": "b27e6152-efa9-416d-926a-4a0da2d85033",
+      "name": "Respond"
+    },
+    {
+      "parameters": {
+        "model": "gemma3:12b",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        144
+      ],
+      "id": "09ab55e7-d7d2-4d50-bc5b-70d31d21bc4f",
+      "name": "Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "3j43lq0Sfv28oe0v",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook').item.json.body.id }}",
+        "contextWindowLength": 50
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1616,
+        144
+      ],
+      "id": "070d2e19-710e-4674-8312-1e67380686a3",
+      "name": "Memory"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "172.23.0.1:5678",
+            "user-agent": "python-requests/2.25.1",
+            "accept-encoding": "gzip, deflate",
+            "accept": "*/*",
+            "connection": "keep-alive",
+            "content-length": "1119",
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "jsonrpc": "2.0",
+            "method": "call",
+            "params": {
+              "prompt": "Try again another single version of the original text.",
+              "conversation_history": [
+                {
+                  "role": "system",
+                  "content": "The user wrote the following text:\n<generated_text>Great stories are for everyone even when only written for just one person. If you try to write with a wide, general audience in mind, your story will sound fake and lack emotion. No one will be interested. Write for one person. If it’s genuine for the one, it’s genuine for the rest.</generated_text>\nYour goal is to help the user write alternatives to that text.\nConditions:\n- You must respect the format (wrapping the alternative between <generated_text> and </generated_text>)\n- You must detect the language of the text given to you and respond in that language\n- Do not write HTML\n- You must suggest one and only one alternative per answer\n- Your answer must be different every time, never repeat yourself\n- You must respect whatever extra conditions the user gives you\n"
+                }
+              ],
+              "database_id": "3caeb664-819a-11f0-a8cf-ce19b8507f32"
+            },
+            "id": "fca7e0c192334489a7dd84d136b1104a"
+          },
+          "webhookUrl": "http://localhost:5678/webhook/testing/api/olg/1/chat",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Split conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Delete conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split conversation": {
+      "main": [
+        [
+          {
+            "node": "Insert conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete conversation": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert conversation": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Delete conversation",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Insert conversation",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9b3704a0-3c83-405b-bbb3-99305135441e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f622fffc9a65ea721957956f36777075e871fec4019ed35293c4311d084c20b1"
+  },
+  "id": "tOoMYOFjOxaCQLJq",
+  "tags": []
+}
